@@ -8,7 +8,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #define BUFFSIZE 256
-#define MAXPAC 1024
+#define MAXPAY 1024
+#define PACKSIZE 32 // 1B ACK, 6B seq#, 6B numPackets, 2B checksum, 3B for spaces
+#define WINSIZE 100
 
 void syserr(char *msg) { perror(msg); exit(-1); }
 void ftpcomm(int newsockfd, char* buffer);
@@ -18,12 +20,14 @@ void recvandwrite(int tempfd, int newsockfd, int size, char* buffer);
 int main(int argc, char *argv[])
 {
   int sockfd, newsockfd, portno, pid, size;
+  uint32_t seqNum;
+  short checksum;
   struct sockaddr_in serv_addr, clt_addr;  
   struct stat filestats;
   socklen_t addrlen;
   char * recvIP;
   char buffer[BUFFSIZE];
-  char package[MAXPAC];
+  char payload[MAXPAY];
 
   if(argc != 3) { 
     fprintf(stderr,"Usage: %s <IP> <port> <name of file>\n", argv[0]);
@@ -53,9 +57,46 @@ int main(int argc, char *argv[])
     syserr("can't bind");
   printf("bind socket to port %d...\n", portno);
   
-  //Construct Packet & Header
+  //Make array of packet elements to send
   stat(arvg[3], &filestats);
   size = filestats.st_size;
+  numPackets = size/PACKSIZE + 1
+  char * fileArray[numPackets];
+  seqNum = 0;
+  //Open File
+  tempfd = open(arvg[3], O_RDWR);
+  if(tempfd < 0) syserr("failed to open file");
+  
+  //Populate the array with packets to send
+  while(1){
+  	char * packet;
+  	char str[13] //CHECK THE SIZE
+  	checksum = 0;
+  	packet = malloc(sizeof(char)*(PACKSIZE + MAXPAY));
+  	char payload[MAXPAY];
+  	
+  	memset(packet, 0, (PACKSIZE + MAXPAY));
+  	strcpy(packet, "0"); //Set ACK to 0
+  	strcat(packet, " "); //Set space
+  	sprintf(str, "%d", seqNum);
+  	strcat(packet, str); //Set Sequence #
+  	strcat(packet, " "); //Set Space
+  	sprintf(str, "%d", numPackets);
+  	strcat(packet, str); //Set number of packets
+  	strcat(packet, " "); //Set Space
+  	sprintf(str, "%d", checksum);
+  	strcat(packet, str); //Set zero checksum
+  	// Read payload from file, add to packet
+  	int bytes_read = read(tempfd, payload, MAXPAY);
+	buffer[bytes_read] = '\0';
+	if (bytes_read == 0) // We're done reading from the file
+		break;
+	if (bytes_read < 0) syserr("error reading file");
+	strcat(packet, payload); //Set Payload
+	
+	char *mkChkSum
+  	
+  }
 
 for(;;) {
   printf("wait on port %d...\n", portno);
@@ -77,6 +118,11 @@ for(;;) {
 }
   close(sockfd); 
   return 0;
+}
+
+unsigned int_to_int(unsigned k) {
+    if (k == 0 || k ==1 ) return k;
+    return (k % 2) + 10 * int_to_int(k / 2);
 }
 
 void ftpcomm(int newsockfd, char* buffer)
