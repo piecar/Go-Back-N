@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/stat.h>
@@ -13,22 +14,25 @@
 #define MAXPAY 1024
 #define HSIZE 15 // 1B ACK, 4B seq#, 4B numPackets, 2B checksum, 4B for spaces
 #define WINSIZE 100
+#define TIMEOUT 10000
 
 void syserr(char *msg) { perror(msg); exit(-1); }
 void ftpcomm(int newsockfd, char* buffer);
 void readandsend(int tempfd, int newsockfd, char* buffer);
 void recvandwrite(int tempfd, int newsockfd, int size, char* buffer);
-uint16_t ChkSum(char * packet);
+uint16_t ChkSum(char * packet, int psize);
 
 int main(int argc, char *argv[])
 {
-  int sockfd, newsockfd, tempfd, portno, pid, size;
+  int sockfd, newsockfd, tempfd, portno, pid, size, n, base;
   uint32_t seqNum, numPackets;
   uint16_t checksum;
   uint8_t ack;
+  struct timeval t1, t2;
   struct sockaddr_in serv_addr, clt_addr; 
   struct hostent* server; 
   struct stat filestats;
+  fd_set readfds;
   socklen_t addrlen;
   char * recvIP;
   char buffer[BUFFSIZE];
@@ -57,6 +61,7 @@ int main(int argc, char *argv[])
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr = *((struct in_addr*)server->h_addr);
   serv_addr.sin_port = htons(portno);
+  addrlen = sizeof(serv_addr);
   
   //Make array of packet elements to send
   stat(argv[3], &filestats);
@@ -69,7 +74,6 @@ int main(int argc, char *argv[])
   //Open File
   tempfd = open(argv[3], O_RDWR);
   if(tempfd < 0) syserr("failed to open file");
-  
   //Populate the array with packets to send
   while(1){
   	char * packet;
@@ -116,11 +120,59 @@ int main(int argc, char *argv[])
 	if (bytes_read < 0) syserr("error reading file");
 	strcat(packet, payload); //Set Payload
 	
-	checksum = ChkSum(packet);
+	checksum = ChkSum(packet, HSIZE + MAXPAY + 1);
   	packet[12] = (checksum >>  8) & 255;
-  	packet[13] = checksum & 255; 
+  	packet[13] = checksum & 255;
+  	//printf("checksum: %d\n", checksum);
+  	fileArray[seqNum] = packet; 
   	seqNum++; 	
-  	printf("seq num: %d", seqNum);
+  	//printf("seq num: %d", seqNum);
+  }
+  close(tempfd);
+  //Set up Go-Back-N loop
+  seqNum = 0;
+  base = 0;
+  char ackPac[HSIZE + 1]; //
+  FD_ZERO(&readfds);
+  FD_SET(sockfd, &readfds);
+  
+  //Send & Recv packets
+  while(1){
+  	select(sockfd+1, &readfds, NULL, NULL, 0);
+  	if(FD_ISSET (sockfd, &readfds)){ 	//recv acks
+  		n = recvfrom(sockfd, ackPac, (HSIZE + 1), 0, 
+  		  (struct sockaddr*)&serv_addr, &addrlen); 
+  		if(n < 0) syserr("can't receive ack packages");
+  		
+  		//check if corrupt
+  		checksum = ChkSum(ackPac, (HSIZE + 1));
+  		if(checksum == 0){
+  		}
+  	}
+  	else{								//send packets
+  		if(seqNum < base + WINSIZE){	//window not maxed out
+  			n = sendto(sockfd, fileArray[seqNum], (HSIZE + MAXPAY + 1), 0, 
+  			  (struct sockaddr*)&serv_addr, addrlen);
+  			if(n < 0) syserr("can't send to receiver");
+  			if(base == seqNum){
+  				gettimeofday(&t1, NULL);
+  			}
+  			seqNum++;
+  		}
+  		gettimeofday(&t2, NULL);
+  		double elaps = (t2.tv_sec - t1.tv_sec) * 1000.0;
+  		elaps += (t2.tv_usec - t2.tv_usec) /1000.0;
+  		if( elaps > TIMEOUT){			// clock timedout, resend packets
+  			gettimeofday(&t1, NULL);
+  			int i = base;
+  			for(i; i < seqNum; i++){
+  				n = sendto(sockfd, fileArray[i], (HSIZE + MAXPAY + 1), 0, 
+  			  		(struct sockaddr*)&serv_addr, addrlen);
+  				if(n < 0) syserr("can't send to receiver");
+  			}
+  		}
+  	}
+  	
   }
 
 for(;;) {
@@ -150,9 +202,8 @@ unsigned int_to_int(unsigned k) {
     return (k % 2) + 10 * int_to_int(k / 2);
 }
 
-uint16_t ChkSum(char * packet){
+uint16_t ChkSum(char * packet, int psize){
 	uint16_t checksum = 0, curr = 0, i = 0;
-	int psize = HSIZE + MAXPAY + 1;
 	//sscanf(packet, "%*s %*s %*s %u", &checksum);
 	//printf("checksum is: %d. Packet Size is: %d\n", checksum, psize);
 	while(psize > 0){
