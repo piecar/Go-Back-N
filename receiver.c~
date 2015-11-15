@@ -3,37 +3,43 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #define BUFFSIZE 256
+#define PACSIZE 1040
+#define ACKSIZE 16
 
 void syserr(char *msg) { perror(msg); exit(-1); }
+uint16_t ChkSum(char * packet, int psize);
 void ftpcomm(int newsockfd, char* buffer);
 void readandsend(int tempfd, int newsockfd, char* buffer);
 void recvandwrite(int tempfd, int newsockfd, int size, char* buffer);
 
 int main(int argc, char *argv[])
 {
-  int sockfd, newsockfd, portno, pid;
+  int sockfd, newsockfd, portno, pid, numPacketsEmpty, cltPort;
+  uint32_t seqNum, exSeqNum, numPackets;
+  uint16_t checksum;
+  uint8_t ack;
   struct sockaddr_in serv_addr, clt_addr;
+  struct timeval tv;
+  fd_set readfds;
   socklen_t addrlen;
   char * recvIP;
   char buffer[256];
+  char packet[PACSIZE];
+  char ackPac[ACKSIZE];
 
   if(argc != 3) { 
-    fprintf(stderr,"Usage: %s <IP> <port> <name of file>\n", argv[0]);
+    fprintf(stderr,"Usage: %s <port> <name of file>\n", argv[0]);
     return 1;
   } 
   else
   { 
-	server = gethostbyname(argv[1]);
-	if(!server) {
-	fprintf(stderr, "ERROR: no such host: %s\n", argv[1]);
-	return 2;
-	}
-  	portno = atoi(argv[2]);
+  	portno = atoi(argv[1]);
   }
 
   sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -44,31 +50,109 @@ int main(int argc, char *argv[])
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = INADDR_ANY;
   serv_addr.sin_port = htons(portno);
+  addrlen = sizeof(clt_addr); 
 
   if(bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) 
     syserr("can't bind");
   printf("bind socket to port %d...\n", portno);
-
-for(;;) {
-  printf("wait on port %d...\n", portno);
-  addrlen = sizeof(clt_addr); 
-  newsockfd = accept(sockfd, (struct sockaddr*)&clt_addr, &addrlen);
-  if(newsockfd < 0) syserr("can't accept"); 
   
-  pid = fork();
-   if (pid < 0)
-     syserr("Error on fork");
-   if (pid == 0)
-   {
-     close(sockfd);
-     ftpcomm(newsockfd, buffer);
-     exit(0);
-   }
-   else
-	 close(newsockfd);
-}
+  //Set up to receive
+  tv.tv_sec = 1;
+  tv.tv_usec = 0;
+  FD_ZERO(&readfds);
+  FD_SET(sockfd, &readfds);
+  tempfd = open(argv[2], O_CREAT | O_WRONLY, 0666);
+  if(tempfd < 0) syserr("failed to open the file");
+  memset(packet, 0, PACSIZE);
+  memset(ackPac, 0, ACKSIZE);
+  exSeqNum = 0;
+  numPacketsEmpty = 1;
+  
+  //Receive packet
+  while(1){
+  	select(sockfd+1, &readfds, NULL, NULL, &tv);
+  	if(FD_ISSET(sockfd, &readfds)){
+	  n = recvfrom(sockfd, packet, PACSIZE, 0, 
+	  	(struct sockaddr*)&clt_addr, &addrlen);
+	  if(n < 0) syserr("can't receive from sender"); 
+	  
+	  seqNum = (uint32_t) packet[5] | (uint32_t) packet[4] << 8 | 
+	  		   (uint32_t) packet[3] << 16 | (uint32_t) packet[2] << 24;
+	  checksum = ChkSum(packet, PACSIZE);
+	  if(numPacketsEmpty){
+	  	haveNumPackets = 0;
+	  	numPackets = (uint32_t) packet[10] | (uint32_t) packet[9] << 8 | 
+	  			(uint32_t) packet[8] << 16 | (uint32_t) packet[7] << 24;
+	  }
+	  
+	  //Check if packet is correct
+	  if(checksum == 0 && seqNum == exSeqNum){
+	  	ack = 1;
+	  	//set ack
+	  	ackPac[0] = ack & 255;
+	  	ackPac[1] = ' ';
+	  	//set seq#
+	  	ackPac[2] = (seqNum >>  24) & 255;
+	  	ackPac[3] = (seqNum >>  16) & 255;
+	  	ackPac[4] = (seqNum >>  8) & 255;
+	  	ackPac[5] = seqNum & 255;
+	  	ackPac[6] = ' ';
+	  	//set numPackets
+	  	ackPac[7] = (numPackets >>  24) & 255;
+	  	ackPac[8] = (numPackets >>  16) & 255;
+	  	ackPac[9] = (numPackets >>  8) & 255;
+	  	ackPac[10] = numPackets & 255;
+	  	ackPac[11] = ' ';
+	  	//set checksum
+	  	ackPac[12] = (checksum >>  8) & 255;
+	  	ackPac[13] = checksum & 255;
+	  	ackPac[14] = ' ';
+	  	ackPac[15] = ' ';
+	  	
+	  	//calculate and set checksum
+	  	checksum = ChkSum(packet, PACSIZE);
+	  	ackPac[12] = (checksum >>  8) & 255;
+	  	ackPac[13] = checksum & 255;
+	  	
+	  	n = sendto(sockfd, ackPac, ACKSIZE, 0, 
+	  		(struct sockaddr*)&clt_addr, addrlen);
+  		if(n < 0) syserr("can't send to receiver");
+	  	
+	  	exSeqNum++;
+	  }
+	  else if(exSeqNum > 0){ //packet fault, but past first packet
+	  	 n = sendto(sockfd, ackPac, ACKSIZE, 0, 
+	  		 (struct sockaddr*)&clt_addr, addrlen);
+  		 if(n < 0) syserr("can't send to receiver");
+	  }
+	  
+	}
+	else{
+		if(seqNum != numPackets)
+			printf("File not received, timeout after 60 secs\n");
+		else
+			printf("File receieved, timeout after 60 secs\n");
+	}
+  }
+  
+  
   close(sockfd); 
   return 0;
+}
+
+uint16_t ChkSum(char * packet, int psize){
+	uint16_t checksum = 0, curr = 0, i = 0;
+	//sscanf(packet, "%*s %*s %*s %u", &checksum);
+	//printf("checksum is: %d. Packet Size is: %d\n", checksum, psize);
+	while(psize > 0){
+		curr = ((packet[i] << 8) + packet[i+1]) + checksum;
+		checksum = curr + 0x0FFFF;
+		curr = (curr >> 16); //Grab the carryout if it exists
+		checksum = curr + checksum;
+		psize -= 2;
+		i += 2;
+	}
+	return ~checksum;
 }
 
 void ftpcomm(int newsockfd, char* buffer)
