@@ -21,8 +21,8 @@ uint16_t ChkSum(char * packet, int psize);
 
 int main(int argc, char *argv[])
 {
-  int sockfd, newsockfd, tempfd, portno, size, n;
-  uint32_t seqNum, numPackets, base;
+  int sockfd, tempfd, portno, n;
+  uint32_t seqNum, numPackets, size, base;
   uint16_t checksum;
   uint8_t ack;
   struct timeval t1, t2;
@@ -74,7 +74,6 @@ int main(int argc, char *argv[])
   //Populate the array with packets to send
   while(1){
   	char * packet;
-  	char str[13]; //CHECK THE SIZE
   	ack = 0;
   	packet = malloc(sizeof(char)*(HSIZE + MAXPAY + 1));
   	char payload[MAXPAY];
@@ -116,14 +115,12 @@ int main(int argc, char *argv[])
 		break;
 	if (bytes_read < 0) syserr("error reading file");
 	strcat(packet, payload); //Set Payload
-	
 	checksum = ChkSum(packet, HSIZE + MAXPAY + 1);
   	packet[12] = (checksum >>  8) & 255;
   	packet[13] = checksum & 255;
-  	printf("checksum: %d\n", checksum);
-  	checksum = (uint16_t) packet[13] | (uint16_t) packet[12] << 8;
-  	printf("checksum: %d\n", checksum);
-  	break;
+  	//printf("checksum: %d\n", checksum);
+  	//checksum = (uint16_t) packet[13] | (uint16_t) packet[12] << 8;
+  	//printf("checksum: %d\n", checksum);
   	fileArray[seqNum] = packet; 
   	seqNum++; 	
   	//printf("seq num: %d", seqNum);
@@ -162,8 +159,8 @@ int main(int argc, char *argv[])
 	  		while(elaps < TIMEOUT){}	// Loop until timeout occurs
 	  		if( elaps > TIMEOUT){		// clock timedout, resend packets
 	  			gettimeofday(&t1, NULL);
-	  			int i = base;
-	  			for(i; i < seqNum; i++){
+	  			int i;
+	  			for(i = base; i < seqNum; i++){
 	  				n = sendto(sockfd, fileArray[i], (HSIZE + MAXPAY + 1), 0, 
 	  			  		(struct sockaddr*)&serv_addr, addrlen);
 	  				if(n < 0) syserr("can't send to receiver");
@@ -186,8 +183,8 @@ int main(int argc, char *argv[])
   		elaps += (t2.tv_usec - t2.tv_usec) /1000.0;
   		if( elaps > TIMEOUT){			// clock timedout, resend packets
   			gettimeofday(&t1, NULL);
-  			int i = base;
-  			for(i; i < seqNum; i++){
+  			int i;
+  			for(i = base; i < seqNum; i++){
   				n = sendto(sockfd, fileArray[i], (HSIZE + MAXPAY + 1), 0, 
   			  		(struct sockaddr*)&serv_addr, addrlen);
   				if(n < 0) syserr("can't send to receiver");
@@ -198,11 +195,6 @@ int main(int argc, char *argv[])
   }
   close(sockfd);
   return 0;
-}
-
-unsigned int_to_int(unsigned k) {
-    if (k == 0 || k ==1 ) return k;
-    return (k % 2) + 10 * int_to_int(k / 2);
 }
 
 uint16_t ChkSum(char * packet, int psize){

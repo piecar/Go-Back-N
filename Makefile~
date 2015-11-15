@@ -1,8 +1,11 @@
-all:	 myftpserver
+all:	 sender receiver
 
-myftpserver: myftpserver.c
+sender: sender.c
+	gcc -Wall $< -o $@
+	
+receiver: receiver.c
 	gcc -Wall $< -o $@
 
 clean:
-	rm -f myftpserver *.o *~ core
+	rm -f sender receiver *.o *~ core
 
