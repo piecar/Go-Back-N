@@ -29,9 +29,9 @@ int main(int argc, char *argv[])
   struct sockaddr_in serv_addr, clt_addr; 
   struct hostent* server; 
   struct stat filestats;
+  struct timeval tv;
   fd_set readfds;
   socklen_t addrlen;
-  char buffer[BUFFSIZE];
   char payload[MAXPAY];
 
   if(argc != 4) { 
@@ -125,7 +125,11 @@ int main(int argc, char *argv[])
   	//printf("seq num: %d", seqNum);
   }
   close(tempfd);
+  printf("All packets were created\n");
+  
   //Set up Go-Back-N loop
+  tv.tv_sec = 0;
+  tv.tv_usec = 100;
   seqNum = 0;
   base = 0;
   char  * ackPac = malloc(sizeof(char)*(HSIZE + 1)); 
@@ -134,8 +138,9 @@ int main(int argc, char *argv[])
   
   //Send & Recv packets
   while(1){
-  	select(sockfd+1, &readfds, NULL, NULL, 0);
+  	select(sockfd+1, &readfds, NULL, NULL, &tv);
   	if(FD_ISSET (sockfd, &readfds)){ 	//recv acks
+  		printf("Got a packet\n");
   		n = recvfrom(sockfd, ackPac, (HSIZE + 1), 0, 
   		  (struct sockaddr*)&serv_addr, &addrlen); 
   		if(n < 0) syserr("can't receive ack packages");
@@ -168,6 +173,7 @@ int main(int argc, char *argv[])
   		}
   	}
   	else{								//send packets
+  		printf("Sending a packet\n");
   		if(seqNum < base + WINSIZE){	//window not maxed out
   			n = sendto(sockfd, fileArray[seqNum], (HSIZE + MAXPAY + 1), 0, 
   			  (struct sockaddr*)&serv_addr, addrlen);

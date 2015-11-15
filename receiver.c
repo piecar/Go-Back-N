@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
   printf("bind socket to port %d...\n", portno);
   
   //Set up to receive
-  tv.tv_sec = 1;
+  tv.tv_sec = 60;
   tv.tv_usec = 0;
   FD_ZERO(&readfds);
   FD_SET(sockfd, &readfds);
@@ -156,6 +156,7 @@ int main(int argc, char *argv[])
 			printf("File not received, timeout after 60 secs\n");
 		else
 			printf("File receieved, timeout after 60 secs\n");
+		break;
 	}
   }
   

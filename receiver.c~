@@ -22,7 +22,7 @@ void recvandwrite(int tempfd, int newsockfd, int size, char* buffer);
 
 int main(int argc, char *argv[])
 {
-  int sockfd, newsockfd, tempfd, portno, n, numPacketsEmpty, cltPort;
+  int sockfd, tempfd, portno, n, numPacketsEmpty;
   uint32_t seqNum, exSeqNum, numPackets;
   uint16_t checksum;
   uint8_t ack;
@@ -31,7 +31,6 @@ int main(int argc, char *argv[])
   fd_set readfds;
   socklen_t addrlen;
   char * recvIP;
-  char buffer[256];
   char packet[PACSIZE];
   char ackPac[ACKSIZE];
 
@@ -59,7 +58,7 @@ int main(int argc, char *argv[])
   printf("bind socket to port %d...\n", portno);
   
   //Set up to receive
-  tv.tv_sec = 1;
+  tv.tv_sec = 60;
   tv.tv_usec = 0;
   FD_ZERO(&readfds);
   FD_SET(sockfd, &readfds);
@@ -157,6 +156,7 @@ int main(int argc, char *argv[])
 			printf("File not received, timeout after 60 secs\n");
 		else
 			printf("File receieved, timeout after 60 secs\n");
+		break;
 	}
   }
   
