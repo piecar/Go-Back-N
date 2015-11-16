@@ -108,8 +108,9 @@ int main(int argc, char *argv[])
   	uint32_t test;
   	memcpy(&test, &packet[2], sizeof(uint32_t));
   	printf("The test has: %d\n", test);
-  	.seqNum = (uint32_t) packet[5] | (uint32_t) packet[4] << 8 | 
-	  		   (uint32_t) packet[3] << 16 | (uint32_t) packet[2] << 24;
+  	seqNum = (uint32_t)((uint16_t)((uint8_t) packet[5] + ((uint8_t) packet[4] << 8)) + ((uint16_t)((uint8_t) packet[3] + ((uint8_t) packet[2] << 8)) << 16));
+  	//seqNum = (uint32_t) packet[5] | (uint32_t) packet[4] << 8 | 
+	  		 //  (uint32_t) packet[3] << 16 | (uint32_t) packet[2] << 24;
   	
   	printf("the seqnum bitseq is: %u, %u, %u, %u\n", (uint32_t) packet[2], (uint32_t) packet[3], (uint32_t) packet[4], (uint32_t) packet[5]);
   	printf("The rebuilt seqnum is: %u\n", seqNum);
@@ -141,7 +142,7 @@ int main(int argc, char *argv[])
   seqNum = 0;
   base = 0;
   //char  * ackPac = malloc(sizeof(char)*(HSIZE + 1)); 
-  
+  exit(0);
   //Send & Recv packets
   while(1){
   	FD_ZERO(&readfds);
