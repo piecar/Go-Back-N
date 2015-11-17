@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
   printf("bind socket to port %d...\n", portno);
   
   //Set up to receive
-  tv.tv_sec = 60;
+  tv.tv_sec = 10;
   tv.tv_usec = 0;
   tempfd = open(argv[2], O_CREAT | O_WRONLY, 0666);
   if(tempfd < 0) syserr("failed to open the file");
@@ -66,35 +66,33 @@ int main(int argc, char *argv[])
   memset(ackPac, 0, ACKSIZE);
   exSeqNum = 0;
   numPacketsEmpty = 1;
-  int k = 0;
   printf("Set up to receive\n");
   
   //Receive packet
   while(1){
-  	//FD_ZERO(&readfds);
-  	//FD_SET(sockfd, &readfds);
-  	//select(sockfd+1, &readfds, NULL, NULL, &tv);
+  	FD_ZERO(&readfds);
+  	FD_SET(sockfd, &readfds);
+  	select(sockfd+1, &readfds, NULL, NULL, &tv);
   	//If packet is received
-  	//if(FD_ISSET(sockfd, &readfds)){
+  	if(FD_ISSET(sockfd, &readfds)){
 	  n = recvfrom(sockfd, &packet, PACSIZE, 0, 
 	  	(struct sockaddr*)&clt_addr, &addrlen);
 	  if(n < 0) syserr("can't receive from sender"); 
 	  if(n > 0) printf("Received from: %d\n", n);
-	  k++;
 	  printf("debug: %u, %u, %u, %u\n", (uint8_t)packet[2], (uint8_t)packet[3], (uint8_t)packet[4], (uint8_t)packet[5]);
+	  
 	  seqNum = (uint32_t)((uint16_t)((uint8_t) packet[5] + ((uint8_t) packet[4] << 8)) + ((uint16_t)((uint8_t) packet[3] + ((uint8_t) packet[2] << 8)) << 16));
-	  printf("the seqnum bitseq is: %u, %u, %u, %u\n", (uint32_t) packet[2], (uint32_t) packet[3], (uint32_t) packet[4], (uint32_t) packet[5]);
 	  checksum = ChkSum(packet, PACSIZE);
 	  if(numPacketsEmpty){
 	  	numPacketsEmpty = 0;
 	  	numPackets = (uint32_t) packet[10] | (uint32_t) packet[9] << 8 | 
 	  			(uint32_t) packet[8] << 16 | (uint32_t) packet[7] << 24;
 	  }
-	  printf("checksum is: %d and seqNum is: %d and exSeqNum is %d\n", checksum, seqNum, exSeqNum);
 	  
 	  //Check if packet is correct
 	  if((checksum == 0 || checksum == 256) && seqNum == exSeqNum){
 	  	ack = 1;
+	  	checksum = 0;
 	  	//set ack
 	  	ackPac[0] = ack & 255;
 	  	ackPac[1] = ' ';
@@ -117,9 +115,10 @@ int main(int argc, char *argv[])
 	  	ackPac[15] = ' ';
 	  	
 	  	//calculate and set checksum
-	  	checksum = ChkSum(packet, PACSIZE);
+	  	checksum = ChkSum(ackPac, ACKSIZE);
 	  	ackPac[12] = (checksum >>  8) & 255;
-	  	ackPac[13] = checksum & 255;
+	  	ackPac[13] = checksum & 255;	
+	  		printf("checksum is: %d\n", checksum);
 	  	/*
 	  	int i;
   		for(i =0 ; i<16; i++){
@@ -129,7 +128,7 @@ int main(int argc, char *argv[])
 	  	n = sendto(sockfd, ackPac, ACKSIZE, 0, 
 	  		(struct sockaddr*)&clt_addr, addrlen);
   		if(n < 0) syserr("can't send to receiver");
-  		if(n > 0) printf("sent out %d bytes\n", n);
+  		//if(n > 0) printf("sent out %d bytes\n", n);
 	  	
 	  	exSeqNum++;
 	  	//Write 1 KB packet to file
@@ -139,6 +138,7 @@ int main(int argc, char *argv[])
 	  	}
 	  	else{
 	  		// Find where string terminates and write to file
+	  		printf("eof lines running\n");
 	  		int i;
 	  		char eof;
 	  		int eofLoc = MAXPAY;
@@ -153,6 +153,7 @@ int main(int argc, char *argv[])
 	  		if(n < 0) syserr("can't write @ end of file");
 	  	}
 	  	
+	  }
 	  }
 	  else if(exSeqNum > 0){ 	//packet fault, but past first packet
 	  	 n = sendto(sockfd, ackPac, ACKSIZE, 0, 
@@ -183,7 +184,7 @@ uint16_t ChkSum(char * packet, int psize){
 	//printf("checksum is: %d. Packet Size is: %d\n", checksum, psize);
 	while(psize > 0){
 		curr = (uint16_t)((packet[i] << 8) + packet[i+1]) + checksum;
-		checksum = curr + 0x0FFFF;
+		checksum = curr + 0xFFFF;
 		curr = (curr >> 16); //Grab the carryout if it exists
 		checksum = curr + checksum;
 		psize -= 2;
