@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
 	  printf("checksum is: %d and seqNum is: %d and exSeqNum is %d\n", checksum, seqNum, exSeqNum);
 	  
 	  //Check if packet is correct
-	  if(checksum == 0 && seqNum == exSeqNum){
+	  if((checksum == 0 || checksum == 256) && seqNum == exSeqNum){
 	  	ack = 1;
 	  	//set ack
 	  	ackPac[0] = ack & 255;
@@ -120,12 +120,12 @@ int main(int argc, char *argv[])
 	  	checksum = ChkSum(packet, PACSIZE);
 	  	ackPac[12] = (checksum >>  8) & 255;
 	  	ackPac[13] = checksum & 255;
-	  	
+	  	/*
 	  	int i;
   		for(i =0 ; i<16; i++){
   			printf("ack acket at %d is: %d\n", i, ackPac[i]);
   		}
-	  	
+	  	*/
 	  	n = sendto(sockfd, ackPac, ACKSIZE, 0, 
 	  		(struct sockaddr*)&clt_addr, addrlen);
   		if(n < 0) syserr("can't send to receiver");
@@ -182,7 +182,7 @@ uint16_t ChkSum(char * packet, int psize){
 	//sscanf(packet, "%*s %*s %*s %u", &checksum);
 	//printf("checksum is: %d. Packet Size is: %d\n", checksum, psize);
 	while(psize > 0){
-		curr = ((packet[i] << 8) + packet[i+1]) + checksum;
+		curr = (uint16_t)((packet[i] << 8) + packet[i+1]) + checksum;
 		checksum = curr + 0x0FFFF;
 		curr = (curr >> 16); //Grab the carryout if it exists
 		checksum = curr + checksum;

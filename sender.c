@@ -66,8 +66,8 @@ int main(int argc, char *argv[])
   printf("num of packets: %d\n", numPackets);
   char ** fileArray;
   fileArray = (char **) malloc(sizeof(char*) * numPackets);
+  //char fileArray[numPackets][HSIZE + MAXPAY + 1];
   seqNum = 0;
-  checksum = 0;
   //Open File
   tempfd = open(argv[3], O_RDWR);
   if(tempfd < 0) syserr("failed to open file");
@@ -76,7 +76,9 @@ int main(int argc, char *argv[])
   while(1){
   	char * packet;
   	ack = 0;
-  	packet = malloc(sizeof(char)*(HSIZE + MAXPAY + 1));
+  	checksum = 0;
+  	packet = (char *)malloc(sizeof(char)*(HSIZE + MAXPAY + 1));
+  	//char packet[HSIZE + MAXPAY + 1];
   	char payload[MAXPAY];
   	
   	memset(packet, 0, (HSIZE + MAXPAY + 1));
@@ -101,12 +103,9 @@ int main(int argc, char *argv[])
   	packet[14] = ' ';
   	
   	printf("The seqnum is: %d\n", seqNum);
-  	/*
-  	int i;
-  	for(i =0 ; i<16; i++){
-  		printf("packet at %d is: %d\n", i, packet[i]);
-  	}
-  	*/
+  	
+  	
+  	
   	//uint32_t test;
   	//memcpy(&test, &packet[2], sizeof(uint32_t));
   	//printf("The test has: %d\n", test);
@@ -120,27 +119,42 @@ int main(int argc, char *argv[])
   	// Read payload from file, add to packet
   	int bytes_read = read(tempfd, payload, MAXPAY);
 	payload[bytes_read] = '\0';
-  	//printf("bytes read are: %u. packet size is: %u. payload size: %d\n", bytes_read, sizeof(packet), sizeof(payload));
+  	printf("bytes read are: %u. packet size is: %lu. payload size: %lu\n", bytes_read, sizeof(packet), sizeof(payload));
   	//printf("The string is: %s\n", packet);
 	if (bytes_read == 0) // We're done reading from the file
 		break;
 	if (bytes_read < 0) syserr("error reading file");
-	strcat(packet, payload); //Set Payload
+	
+	int i;
+  	for(i =0 ; i<16; i++){
+  		printf("before at %d is: %d\n", i, packet[i]);
+  	}
+	
+	strcpy(packet + 15, payload); //Set Payload
 	checksum = ChkSum(packet, HSIZE + MAXPAY + 1);
   	packet[12] = (checksum >>  8) & 255;
   	packet[13] = checksum & 255;
+  	
   	//checksum = ChkSum(packet, HSIZE + MAXPAY + 1);
   	//checksum = (uint16_t)((uint8_t) packet[13] | (uint8_t) packet[12] << 8);
   	//printf("checksum: %d\n", checksum);
+  	//strcpy(fileArray[seqNum], packet);
   	fileArray[seqNum] = packet;
-  	printf("Size of filearray: %lu\n", sizeof(fileArray[seqNum]));
-  	char ppacket[HSIZE + MAXPAY + 1];
-  				strcpy(ppacket, fileArray[seqNum]);
-  				uint32_t seqNum2 = (uint32_t)((uint16_t)((uint8_t) ppacket[5] + ((uint8_t) ppacket[4] << 8)) + ((uint16_t)((uint8_t) ppacket[3] + ((uint8_t) ppacket[2] << 8)) << 16));
+  	/*
+  	//printf("Size of filearray element: %lu\n", sizeof( fileArray));
+  	//char ppacket[HSIZE + MAXPAY + 1];
+  	//printf("Size of packet element: %lu. Size of ppacket element: %lu. Size of ppacket element: %lu\n", sizeof(packet), sizeof(ppacket), sizeof(fileArray));
+  				//memcpy(ppacket, fileArray[seqNum], 1040);
+  				int j;
+  	for(j =0 ; j<16; j++){
+  		printf("fileArray at %d is: %d\n", j, (fileArray[seqNum][j]));
+  	}
+  				uint32_t seqNum2 = (uint32_t)((uint16_t)((uint8_t) (fileArray[seqNum])[5] + ((uint8_t) (fileArray[seqNum])[4] << 8)) + ((uint16_t)((uint8_t) (fileArray[seqNum])[3] + ((uint8_t) (fileArray[seqNum])[2] << 8)) << 16));
   				printf("The 2nd rebuilt seqnum is: %u\n", seqNum2); 
+  				*/
   	seqNum++; 	
   	//printf("seq num @ end: %d\n", seqNum);
-  	if (k == 50) break;
+  	//if (k == 50) break;
   	k++;
   }
   close(tempfd);
@@ -148,26 +162,28 @@ int main(int argc, char *argv[])
   
   //Set up Go-Back-N loop
   tv.tv_sec = 0;
-  tv.tv_usec = 100;
+  tv.tv_usec = 0;
   seqNum = 0;
   base = 0;
   //char  * ackPac = malloc(sizeof(char)*(HSIZE + 1)); 
-  exit(0);
+  //exit(0);
   //Send & Recv packets
   while(1){
   	FD_ZERO(&readfds);
   	FD_SET(sockfd, &readfds);
   	select(sockfd+1, &readfds, NULL, NULL, &tv);
+  	printf("before select\n");
   	if(FD_ISSET (sockfd, &readfds)){ 	//recv acks
   		printf("Got a packet");
   		char ackPac[HSIZE + 1];
-  		n = recvfrom(sockfd, ackPac, (HSIZE + 1), 0, 
+  		memset(ackPac, 0, (HSIZE + 1));
+  		n = recvfrom(sockfd, &ackPac, (HSIZE + 1), 0, 
   		  (struct sockaddr*)&serv_addr, &addrlen); 
   		if(n < 0) syserr("can't receive ack packages");
   		
   		//check if corrupt
   		checksum = ChkSum(ackPac, (HSIZE + 1));
-  		if(checksum == 0){				//Not Corrupt
+  		if(checksum == 0 || checksum == 256){				//Not Corrupt
   			base = (uint32_t) ackPac[5] | (uint32_t) ackPac[4] << 8 | 
   			  (uint32_t) ackPac[3] << 16 | (uint32_t) ackPac[2] << 24;
   			if(base == numPackets) break; //Finished sending packets
@@ -198,13 +214,14 @@ int main(int argc, char *argv[])
   			n = sendto(sockfd, fileArray[seqNum], (HSIZE + MAXPAY + 1), 0, 
   			  (struct sockaddr*)&serv_addr, addrlen);
   			if(n < 0) syserr("can't send to receiver");
-  			
+  			//printf("packet sent!\n");
+  			/*
   				char packet[HSIZE + MAXPAY + 1];
   				strcpy(packet, fileArray[seqNum]);
   				uint32_t seqNum2 = (uint32_t)((uint16_t)((uint8_t) packet[5] + ((uint8_t) packet[4] << 8)) + ((uint16_t)((uint8_t) packet[3] + ((uint8_t) packet[2] << 8)) << 16));
   				printf("The 2nd rebuilt seqnum is: %u\n", seqNum2);
   				break;
-  				
+  				*/
   			if(base == seqNum){
   				gettimeofday(&t1, NULL);
   			}
@@ -234,7 +251,7 @@ uint16_t ChkSum(char * packet, int psize){
 	//sscanf(packet, "%*s %*s %*s %u", &checksum);
 	//printf("checksum is: %d. Packet Size is: %d\n", checksum, psize);
 	while(psize > 0){
-		curr = ((packet[i] << 8) + packet[i+1]) + checksum;
+		curr = (uint16_t)((packet[i] << 8) + packet[i+1]) + checksum;
 		checksum = curr + 0x0FFFF;
 		curr = (curr >> 16); //Grab the carryout if it exists
 		checksum = curr + checksum;
