@@ -81,9 +81,9 @@ int main(int argc, char *argv[])
 	  if(n < 0) syserr("can't receive from sender"); 
 	  if(n > 0) printf("Received from: %d\n", n);
 	  k++;
-	  
-	  seqNum = (uint32_t) packet[5] | (uint32_t) packet[4] << 8 | 
-	  		   (uint32_t) packet[3] << 16 | (uint32_t) packet[2] << 24;
+	  printf("debug: %u, %u, %u, %u\n", (uint8_t)packet[2], (uint8_t)packet[3], (uint8_t)packet[4], (uint8_t)packet[5]);
+	  seqNum = (uint32_t)((uint16_t)((uint8_t) packet[5] + ((uint8_t) packet[4] << 8)) + ((uint16_t)((uint8_t) packet[3] + ((uint8_t) packet[2] << 8)) << 16));
+	  printf("the seqnum bitseq is: %u, %u, %u, %u\n", (uint32_t) packet[2], (uint32_t) packet[3], (uint32_t) packet[4], (uint32_t) packet[5]);
 	  checksum = ChkSum(packet, PACSIZE);
 	  if(numPacketsEmpty){
 	  	numPacketsEmpty = 0;
@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
 	  	ackPac[0] = ack & 255;
 	  	ackPac[1] = ' ';
 	  	//set seq#
-	  	ackPac[2] = (seqNum >>  24) & 255;
+	  	ackPac[2] = (seqNum >>  24) & 0xFF;
 	  	ackPac[3] = (seqNum >>  16) & 255;
 	  	ackPac[4] = (seqNum >>  8) & 255;
 	  	ackPac[5] = seqNum & 255;
@@ -132,7 +132,6 @@ int main(int argc, char *argv[])
   		if(n > 0) printf("sent out %d bytes\n", n);
 	  	
 	  	exSeqNum++;
-	  	break;
 	  	//Write 1 KB packet to file
 	  	if(seqNum != numPackets){
 	  		n = write(tempfd, &packet[HSIZE + 1], MAXPAY);

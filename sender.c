@@ -64,13 +64,15 @@ int main(int argc, char *argv[])
   size = filestats.st_size;
   numPackets = size/MAXPAY + 1;
   printf("num of packets: %d\n", numPackets);
-  char * fileArray[numPackets];
+  char ** fileArray;
+  fileArray = (char **) malloc(sizeof(char*) * numPackets);
   seqNum = 0;
   checksum = 0;
   //Open File
   tempfd = open(argv[3], O_RDWR);
   if(tempfd < 0) syserr("failed to open file");
   //Populate the array with packets to send
+  	int k = 0;
   while(1){
   	char * packet;
   	ack = 0;
@@ -105,15 +107,16 @@ int main(int argc, char *argv[])
   		printf("packet at %d is: %d\n", i, packet[i]);
   	}
   	*/
-  	uint32_t test;
-  	memcpy(&test, &packet[2], sizeof(uint32_t));
-  	printf("The test has: %d\n", test);
-  	seqNum = (uint32_t)((uint16_t)((uint8_t) packet[5] + ((uint8_t) packet[4] << 8)) + ((uint16_t)((uint8_t) packet[3] + ((uint8_t) packet[2] << 8)) << 16));
+  	//uint32_t test;
+  	//memcpy(&test, &packet[2], sizeof(uint32_t));
+  	//printf("The test has: %d\n", test);
+  	seqNum = (uint32_t)(((uint16_t)((uint8_t)packet[2]<<8)+(uint8_t)packet[3])<<16)+(uint16_t)((uint8_t)packet[4]<<8)+(uint8_t)packet[5];
+  	//seqNum = (uint32_t)((uint16_t)((uint8_t) packet[5] + ((uint8_t) packet[4] << 8)) + ((uint16_t)((uint8_t) packet[3] + ((uint8_t) packet[2] << 8)) << 16));
   	//seqNum = (uint32_t) packet[5] | (uint32_t) packet[4] << 8 | 
 	  		 //  (uint32_t) packet[3] << 16 | (uint32_t) packet[2] << 24;
   	
-  	printf("the seqnum bitseq is: %u, %u, %u, %u\n", (uint32_t) packet[2], (uint32_t) packet[3], (uint32_t) packet[4], (uint32_t) packet[5]);
-  	printf("The rebuilt seqnum is: %u\n", seqNum);
+//  	printf("the seqnum bitseq is: %u, %u, %u, %u\n", (uint8_t) packet[2], (uint8_t) packet[3], (uint8_t) packet[4], (uint8_t) packet[5]);
+//  	printf("The rebuilt seqnum is: %u\n", seqNum);
   	// Read payload from file, add to packet
   	int bytes_read = read(tempfd, payload, MAXPAY);
 	payload[bytes_read] = '\0';
@@ -126,12 +129,19 @@ int main(int argc, char *argv[])
 	checksum = ChkSum(packet, HSIZE + MAXPAY + 1);
   	packet[12] = (checksum >>  8) & 255;
   	packet[13] = checksum & 255;
+  	//checksum = ChkSum(packet, HSIZE + MAXPAY + 1);
+  	//checksum = (uint16_t)((uint8_t) packet[13] | (uint8_t) packet[12] << 8);
   	//printf("checksum: %d\n", checksum);
-  	//checksum = (uint16_t) packet[13] | (uint16_t) packet[12] << 8;
-  	//printf("checksum: %d\n", checksum);
-  	fileArray[seqNum] = packet; 
+  	fileArray[seqNum] = packet;
+  	printf("Size of filearray: %lu\n", sizeof(fileArray[seqNum]));
+  	char ppacket[HSIZE + MAXPAY + 1];
+  				strcpy(ppacket, fileArray[seqNum]);
+  				uint32_t seqNum2 = (uint32_t)((uint16_t)((uint8_t) ppacket[5] + ((uint8_t) ppacket[4] << 8)) + ((uint16_t)((uint8_t) ppacket[3] + ((uint8_t) ppacket[2] << 8)) << 16));
+  				printf("The 2nd rebuilt seqnum is: %u\n", seqNum2); 
   	seqNum++; 	
-  	printf("seq num @ end: %d\n", seqNum);
+  	//printf("seq num @ end: %d\n", seqNum);
+  	if (k == 50) break;
+  	k++;
   }
   close(tempfd);
   printf("All packets were created\n");
@@ -188,6 +198,13 @@ int main(int argc, char *argv[])
   			n = sendto(sockfd, fileArray[seqNum], (HSIZE + MAXPAY + 1), 0, 
   			  (struct sockaddr*)&serv_addr, addrlen);
   			if(n < 0) syserr("can't send to receiver");
+  			
+  				char packet[HSIZE + MAXPAY + 1];
+  				strcpy(packet, fileArray[seqNum]);
+  				uint32_t seqNum2 = (uint32_t)((uint16_t)((uint8_t) packet[5] + ((uint8_t) packet[4] << 8)) + ((uint16_t)((uint8_t) packet[3] + ((uint8_t) packet[2] << 8)) << 16));
+  				printf("The 2nd rebuilt seqnum is: %u\n", seqNum2);
+  				break;
+  				
   			if(base == seqNum){
   				gettimeofday(&t1, NULL);
   			}
